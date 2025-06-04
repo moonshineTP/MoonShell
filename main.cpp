@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <vector>
 #include <windows.h>
@@ -67,8 +68,8 @@ struct FlagDescription {
 };
 
 struct CommandDictionary {
-    std::unordered_map<std::wstring, CommandDescription> commandMap;
-    std::unordered_map<std::wstring, FlagDescription> flagMap;
+    std::map<std::wstring, CommandDescription> commandMap;
+    std::map<std::wstring, FlagDescription> flagMap;
 
     CommandDictionary() = default;
 };
@@ -94,13 +95,18 @@ void initializeRootDirectory() {
 }
 
 void initializeCommandDictionary() {
-    // Khởi tạo các lệnh
+    // Khởi tạo các lệnh đặc biệt
     commandDict.commandMap[L"NULL"] = {
         L"NULL", L"Lệnh trống", {}
     };
     commandDict.commandMap[L"INVALID"] = {
         L"INVALID", L"Lệnh không hợp lệ", {}
     };
+    commandDict.commandMap[L"WRONG_VAR"] = {
+        L"WRONG_VAR", L"Biến không tồn tại", {}
+    };
+
+    // Lệnh không có cờ
     commandDict.commandMap[L"intro"] = {
         L"intro", L"Giới thiệu phần mềm MoonShell", {}
     };
@@ -116,6 +122,35 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"clrscr"] = {
         L"clrscr", L"Làm sạch console", {}
     };
+    commandDict.commandMap[L"viewvar"] = {
+        L"viewvar", L"Hiển thị tất cả các biến shell lưu giữ", {}
+    };
+    commandDict.commandMap[L"viewpath"] = {
+        L"viewpath", L"Hiển thị các biến trong PATH", {}
+    };
+    commandDict.commandMap[L"backward"] = {
+        L"backward", L"Quay lại thư mục cha", {}
+    };
+    commandDict.commandMap[L"return"] = {
+        L"return", L"Quay về thư mục gốc", {}
+    };
+    commandDict.commandMap[L"viewdir"] = {
+        L"viewdir", L"Hiển thị danh sách file và thư mục trong thư mục hiện tại", {}
+    };
+    commandDict.commandMap[L"sysinfo"] = {
+        L"sysinfo", L"Hiển thị thông tin hệ thống", {}
+    };
+    commandDict.commandMap[L"timeinfo"] = {
+        L"timeinfo", L"Hiển thị thời gian hệ thống", {}
+    };
+    commandDict.commandMap[L"userinfo"] = {
+        L"userinfo", L"Hiển thị thông tin người dùng", {}
+    };
+    commandDict.commandMap[L"ipinfo"] = {
+        L"ipinfo", L"Hiển thị thông tin IP/network adapters", {}
+    };
+
+    // Lệnh có cờ
     commandDict.commandMap[L"echo"] = {
         L"echo", L"In ra nội dung lệnh", {L"-argS"}
     };
@@ -125,20 +160,14 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"setbgcol"] = {
         L"setbgcol", L"Thay đổi màu sắc của console", {L"-color"}
     };
-    commandDict.commandMap[L"viewvar"] = {
-        L"viewvar", L"Hiển thị tất cả các biến trong tiến trình", {}
-    };
     commandDict.commandMap[L"setvar"] = {
-        L"setvar", L"Thiết lập biến trong tiến trình", {L"-varkey", L"-varvalue"}
+        L"setvar", L"Thiết lập biến shell", {L"-key", L"-value"}
     };
     commandDict.commandMap[L"getvar"] = {
-        L"getvar", L"Lấy giá trị của biến trong tiến trình", {L"-varkey"}
+        L"getvar", L"Lấy giá trị của biến trong shell", {L"-key"}
     };
     commandDict.commandMap[L"rmvar"] = {
-        L"rmvar", L"Xóa biến trong tiến trình", {L"-varkey"}
-    };
-    commandDict.commandMap[L"viewpath"] = {
-        L"viewpath", L"Hiển thị các biến trong PATH", {}
+        L"rmvar", L"Xóa biến trong shell", {L"-key"}
     };
     commandDict.commandMap[L"addpath"] = {
         L"addpath", L"Thêm biến trong PATH", {L"-path"}
@@ -149,48 +178,55 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"forward"] = {
         L"forward", L"Chuyển đến thư mục con", {L"-dir"}
     };
-    commandDict.commandMap[L"backward"] = {
-        L"backward", L"Quay lại thư mục cha", {}
+    commandDict.commandMap[L"adddir"] = {
+        L"adddir", L"Tạo thư mục", {L"-dir"}
     };
-    commandDict.commandMap[L"return"] = {
-        L"return", L"Quay về thư mục gốc", {}
+    commandDict.commandMap[L"addfile"] = {
+        L"addfile", L"Tạo file", {L"-csv", L"-txt", L"-json", L"-bat"}
     };
-    commandDict.commandMap[L"build"] = {
-        L"build", L"Xây dựng file thực thi từ file chương trình",
-        {L"-cpp", L"-exe", L"-java", L"-class"}
+    commandDict.commandMap[L"viewfile"] = {
+        L"viewfile", L"Xem nội dung file", {L"-csv", L"-txt", L"-json", L"-bat"}
     };
-    commandDict.commandMap[L"run"] = {
-        L"run", L"Chạy file (được hỗ trợ trong PATHEXT) cùng với dãy tham số",
-        {L"-argS", L"-bg"}
-    };
-    commandDict.commandMap[L"runclass"] = {
-        L"runclass", L"Chạy file .class cùng với dãy tham số",
-        {L"-argS", L"-optionS", L"-bg"}
-    };
-    commandDict.commandMap[L"runjar"] = {
-        L"runjar", L"Chạy file .jar cùng với dãy tham số",
-        {L"-argS", L"-optionS", L"-bg"}
-    };
-    commandDict.commandMap[L"create"] = {
-        L"create", L"Tạo file", {L"-csv", L"-txt", L"-json", L"-bat"}
-    };
-    commandDict.commandMap[L"view"] = {
-        L"view", L"Xem nội dung file", {L"-csv", L"-txt", L"-json", L"bat"}
-    };
-    commandDict.commandMap[L"write"] = {
-        L"write", L"Viết đè lên file", {L"-csv", L"-txt", L"-json", L"bat"}
+    commandDict.commandMap[L"writefile"] = {
+        L"writefile", L"Viết đè lên file", {L"-csv", L"-txt", L"-json", L"-bat"}
     };
     commandDict.commandMap[L"rename"] = {
-        L"rename", L"Đổi tên thư mục hoặc file",
-        {L"-targetname", L"-newname"}
+        L"rename", L"Đổi tên thư mục hoặc file", {L"-targetname", L"-newname"}
     };
     commandDict.commandMap[L"delete"] = {
         L"delete", L"Xóa thư mục hoặc file", {L"-targetname"}
     };
+    commandDict.commandMap[L"build"] = {
+        L"build", L"Xây dựng file thực thi từ file chương trình", {L"-cpp", L"-exe", L"-java"}
+    };
+    commandDict.commandMap[L"run"] = {
+        L"run", L"Chạy file (được hỗ trợ trong PATHEXT) cùng với dãy tham số", {L"-argS", L"-bg"}
+    };
+    commandDict.commandMap[L"runbatch"] = {
+        L"runbatch", L"Chạy file .bat cùng với dãy tham số", {L"-argS", L"-bg"}
+    };
+    commandDict.commandMap[L"runclass"] = {
+        L"runclass", L"Chạy file .class cùng với dãy tham số", {L"-argS", L"-optionS", L"-bg"}
+    };
+    commandDict.commandMap[L"runjar"] = {
+        L"runjar", L"Chạy file .jar cùng với dãy tham số", {L"-argS", L"-optionS", L"-bg"}
+    };
+    commandDict.commandMap[L"ping"] = {
+        L"ping", L"Ping một host", {L"-host"}
+    };
+    commandDict.commandMap[L"traceroute"] = {
+        L"traceroute", L"Traceroute tới một host", {L"-host"}
+    };
+    commandDict.commandMap[L"nslookup"] = {
+        L"nslookup", L"Tra cứu DNS cho một host", {L"-host"}
+    };
+    commandDict.commandMap[L"portcheck"] = {
+        L"portcheck", L"Kiểm tra cổng mạng", {L"-port"}
+    };
 
     // Khởi tạo các cờ
     commandDict.flagMap[L"-dir"] = {
-        L"-dir", L"Tên thư mục đích khi chuyển đến thư mục con"
+        L"-dir", L"Tên thư mục đích khi chuyển đến thư mục con hoặc tạo thư mục"
     };
     commandDict.flagMap[L"-targetname"] = {
         L"-targetname", L"Tên thư mục/file được nhắm đến trong lệnh"
@@ -206,12 +242,6 @@ void initializeCommandDictionary() {
     };
     commandDict.flagMap[L"-exe"] = {
         L"-exe", L"File exe"
-    };
-    commandDict.flagMap[L"-class"] = {
-        L"-class", L"File class"
-    };
-    commandDict.flagMap[L"-jar"] = {
-        L"-jar", L"File jar"
     };
     commandDict.flagMap[L"-bg"] = {
         L"-bg", L"Chạy file trong nền không (background), phải đi kèm với tham số <yes>"
@@ -246,14 +276,20 @@ void initializeCommandDictionary() {
         L"        * cyan\n"
         L"        * white"
     };
-    commandDict.flagMap[L"-varkey"] = {
-        L"-varkey", L"Tên biến trong tiến trình"
+    commandDict.flagMap[L"-key"] = {
+        L"-key", L"Tên biến trong tiến trình"
     };
-    commandDict.flagMap[L"-varvalue"] = {
-        L"-varvalue", L"Giá trị của biến trong tiến trình"
+    commandDict.flagMap[L"-value"] = {
+        L"-value", L"Giá trị của biến trong tiến trình"
     };
     commandDict.flagMap[L"-path"] = {
         L"-path", L"Đường dẫn của biến trong PATH"
+    };
+    commandDict.flagMap[L"-host"] = {
+        L"-host", L"Địa chỉ mạng"
+    };
+    commandDict.flagMap[L"-port"] = {
+        L"-port", L"Cổng kết nối"
     };
 }
 
@@ -318,13 +354,30 @@ Command decomposeCommandLine(const std::wstring& commandLine) {
         // Đọc dãy tham số ứng với cờ
         int cnt = 0;
         while (idx < tokens.size()) {
+            std::wstring param = tokens[idx];
+
+            // Nếu là biến,
+            if (param[0] == L'%' && param.size() > 1) {
+                // Nếu là biến, thay thế bằng giá trị của biến
+                std::wstring varKey = param.substr(1);
+                if (variables.find(varKey) != variables.end()) {
+                    param = variables[varKey];
+                } else {
+                    // Biến không tồn tại, trả về lệnh không hợp lệ
+                    return Command(
+                        L"WRONG_VAR",
+                        std::unordered_map<std::wstring, std::vector<std::wstring>>{}
+                    );
+                }
+            }
+
             // Nếu gặp cờ mới, dừng lại
-            if (commandDict.flagMap.find(tokens[idx]) != commandDict.flagMap.end()) {
+            if (commandDict.flagMap.find(param) != commandDict.flagMap.end()) {
                 break;
             }
 
             // Cập nhật tham số vào cờ
-            commandMap[flag].push_back(tokens[idx]);
+            commandMap[flag].push_back(param);
             cnt++;
             idx++;
             
@@ -362,6 +415,12 @@ bool checkCommand(Command& command) {
         return false;
     }
 
+    if (command.name == L"WRONG_VAR") {
+        std::wcout << L"Biến/các biến được chèn không tồn tại trong shell. "
+                        L"Gõ lệnh viewvar hoặc getvar để kiểm tra.\n";
+        return false;
+    }
+
     return true;
 }
 
@@ -377,8 +436,6 @@ void printFlagList() {
         std::wcout << L"    > " << flag.name << L": " << flag.description << L".\n";
     }
 }
-
-
 
 // ------------Các hàm lệnh của chương trình------------------------
 // Hàm hiển thị thông tin chương trình
@@ -403,7 +460,38 @@ void cmd_intro() {
     std::wcout << L"--------------------------------------------------------\n";
 }
 
-void cmd_help() {
+void cmd_intro(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh intro không có cờ tham số.\n";
+        return;
+    }
+    
+    std::wcout << L"--------------------------------------------------------\n";
+    std::wcout << L"Phần mềm MoonShell - Phương tiện giao tiếp hệ thống\n";
+    std::wcout << L"Phiên bản 1.0         \n";
+    std::wcout << L"Chào mừng bạn =^.^=   \n";
+    std::wcout << L"                      \n";
+    std::wcout << L"      _..._           \n";
+    std::wcout << L"   .::'    ``.        \n";
+    std::wcout << L"  :::        ::       \n";
+    std::wcout << L"  :::        ::       \n";
+    std::wcout << L"  `::.       ;'       \n";
+    std::wcout << L"    `':...-''         \n";
+    std::wcout << L"                      \n";
+    std::wcout << L"--------------------------------------------------------\n";
+    std::wcout << L"Gõ lệnh 'intro' để xem giới thiệu phần mềm.             \n";
+    std::wcout << L"Gõ lệnh 'help' để xem danh sách các lệnh và cờ.         \n";
+    std::wcout << L"Gõ lệnh 'example' để xem ví dụ sử dụng phần mềm.        \n";
+    std::wcout << L"Gõ lệnh 'exit' để thoát khỏi phần mềm.                  \n";
+    std::wcout << L"--------------------------------------------------------\n";
+}
+
+void cmd_help(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh help không có cờ tham số.\n";
+        return;
+    }
+
     std::wcout << L"Một lệnh hợp lệ có dạng:\n";
     std::wcout << L"    <command> <flag_1> <params_1> <flag_2> <params_2> ... <flag_n> <params_n>\n";
     std::wcout << L"Trong đó:\n";
@@ -412,7 +500,8 @@ void cmd_help() {
     std::wcout << L"              Nếu đuôi là \'S\' thì đó là cờ số nhiều, còn lại là cờ số ít.\n";
     std::wcout << L"    - params_i: dãy tham số ứng với cờ.\n";
     std::wcout << L"        + Nếu là cờ số ít, dãy chỉ được có đúng 1 tham số.\n";
-    std::wcout << L"        + Nếu là cờ só nhiều, dãy phải có ít nhất 1 tham số.\n";
+    std::wcout << L"        + Nếu là cờ số nhiều, dãy phải có ít nhất 1 tham số.\n";
+    std::wcout << L"        + Nếu params_i là biến (bắt đầu bởi %), tham số được thay thế bằng giá trị của biến.\n";
     std::wcout << L"\n";
 
     std::wcout << L"Danh sách các lệnh khả dụng:\n";
@@ -424,7 +513,12 @@ void cmd_help() {
     std::wcout << L"\n";
 }
 
-void cmd_exit(){
+void cmd_exit(Command& command){
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh exit không có cờ tham số.\n";
+        return;
+    }
+
     std::wcout << L"Bạn chắc chăn muốn thoát khỏi phần mềm MoonShell (gõ Y để thoát): ";
     std::wstring choice;
     std::getline(std::wcin, choice);
@@ -437,7 +531,12 @@ void cmd_exit(){
     exit(0);
 }
 
-void cmd_example() {
+void cmd_example(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh example không có cờ tham số.\n";
+        return;
+    }
+
     std::wcout << L"Ví dụ sử dụng phần mềm MoonShell:\n";
     std::wcout << L"1. Chuyển đến thư mục con: forward -dir example_matmul\n";
     std::wcout << L"2. Xây dựng file .exe từ file .cpp: build -cpp matrix_generator.cpp -exe matrix_generator.exe\n";
@@ -447,26 +546,34 @@ void cmd_example() {
     std::wcout << L"6. Xóa thư mục hoặc file: delete -targetname matgen.cpp\n";
 }
 
-void cmd_clrscr() {
+void cmd_clrscr(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh clrscr không có cờ tham số.\n";
+        return;
+    }
+
+    // Các biến
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     DWORD count, cellCount;
     COORD homeCoords = { 0, 0 };
 
+    // Kiểm tra handle hợp lệ
     if (hConsole == INVALID_HANDLE_VALUE) return;
 
+    // Lấy thông tin về console
     if (!GetConsoleScreenBufferInfo(hConsole, &csbi)) return;
     cellCount = csbi.dwSize.X * csbi.dwSize.Y;
 
-    // Fill the entire screen with blanks
+    // Xóa
     if (!FillConsoleOutputCharacterW(
         hConsole, L' ', cellCount, homeCoords, &count)) return;
 
-    // Fill the entire screen with the current colors and attributes
+    // Đặt thuộc tính mặc định
     if (!FillConsoleOutputAttribute(
         hConsole, csbi.wAttributes, cellCount, homeCoords, &count)) return;
 
-    // Move the cursor home
+    // Đặt con trỏ về vị trí đầu tiên
     SetConsoleCursorPosition(hConsole, homeCoords);
 }
 
@@ -593,7 +700,12 @@ void cmd_echo(Command& command) {
     std::wcout << '\n';
 }
 
-void cmd_viewvar() {
+void cmd_viewvar(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh viewvar không có cờ tham số.\n";
+        return;
+    }
+
     if (variables.empty()) {
         std::wcout << L"Không có biến nào trong tiến trình.\n";
         return;
@@ -608,16 +720,16 @@ void cmd_viewvar() {
 void cmd_setvar(Command& command) {
     // Kiểm tra cờ tham số tồn tại không
     if (command.map.size() != 2 ||
-        command.map.find(L"-varkey") == command.map.end() ||
-        command.map.find(L"-varvalue") == command.map.end())
+        command.map.find(L"-key") == command.map.end() ||
+        command.map.find(L"-value") == command.map.end())
     {
         std::wcout << L"Lệnh setvar thiếu cờ tham số.\n";
         return;
     }
 
     // Lấy tên biến và giá trị từ cờ
-    std::wstring varKey = command.map[L"-varkey"][0];
-    std::wstring varValue = command.map[L"-varvalue"][0];
+    std::wstring varKey = command.map[L"-key"][0];
+    std::wstring varValue = command.map[L"-value"][0];
 
     // Thiết lập biến trong tiến trình
     variables[varKey] = varValue;
@@ -627,14 +739,14 @@ void cmd_setvar(Command& command) {
 void cmd_getvar(Command& command) {
     // Kiểm tra cờ tham số tồn tại không
     if (command.map.size() != 1 ||
-        command.map.find(L"-varkey") == command.map.end())
+        command.map.find(L"-key") == command.map.end())
     {
         std::wcout << L"Lệnh getvar thiếu cờ tham số.\n";
         return;
     }
 
     // Lấy tên biến từ cờ
-    std::wstring varKey = command.map[L"-varkey"][0];
+    std::wstring varKey = command.map[L"-key"][0];
 
     // Kiểm tra biến có tồn tại không
     auto it = variables.find(varKey);
@@ -648,14 +760,14 @@ void cmd_getvar(Command& command) {
 void cmd_rmvar(Command& command) {
     // Kiểm tra cờ tham số tồn tại không
     if (command.map.size() != 1 ||
-        command.map.find(L"-varkey") == command.map.end()) 
+        command.map.find(L"-key") == command.map.end())
     {
-        std::wcout << L"Lệnh hiếu cờ -varkey.\n";
+        std::wcout << L"Lệnh hiếu cờ -key.\n";
         return;
     }
 
     // Lấy tên biến từ cờ
-    std::wstring varKey = command.map[L"-varkey"][0];
+    std::wstring varKey = command.map[L"-key"][0];
 
     // Xóa biến trong tiến trình
     auto it = variables.find(varKey);
@@ -667,7 +779,12 @@ void cmd_rmvar(Command& command) {
     }
 }
 
-void cmd_viewpath() {
+void cmd_viewpath(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh viewpath không có cờ tham số.\n";
+        return;
+    }
+
     // Lấy độ dài thực sự của PATH
     DWORD len = GetEnvironmentVariableW(L"PATH", nullptr, 0);
     if (len == 0) {
@@ -702,7 +819,7 @@ void cmd_viewpath() {
 void cmd_addpath(Command& command) {
     // Kiểm tra cờ tham số tồn tại không
     if (command.map.size() != 1 ||
-        command.map.find(L"-path") == command.map.end()) 
+        command.map.find(L"-path") == command.map.end())
     {
         std::wcout << L"Lệnh addpath thiếu cờ -path.\n";
         return;
@@ -782,6 +899,200 @@ void cmd_rmpath(Command& command) {
     } else {
         std::wcout << L"Đường dẫn không tồn tại trong PATH.\n";
     }
+} 
+
+void cmd_viewfile(Command& command) {
+    // Mở và hiển thị nội dung file
+    for (const auto& [flag, params] : command.map) {
+        if (params.empty()) continue;
+        std::wstring filename = params[0];
+        std::wifstream file(filename.c_str());
+        if (!file) {
+            std::wcout << L"Không thể mở file: " << filename << L".\n";
+            continue;
+        }
+        std::wcout << L"Mở file " << filename << L" thành công. " << L"Nội dung file:\n";
+        std::wstring line;
+
+        // Trích lấy console và info
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+        WORD saved_attributes = 0;
+
+        // Đặt màu mới cho console
+        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
+            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
+            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
+                hConsole,
+                FOREGROUND_BLUE | FOREGROUND_INTENSITY
+            );
+        }
+
+        // In lên console với màu mới
+        while (std::getline(file, line)) {
+            std::wcout << line << L"\n";
+        }
+
+        // Đặt lại màu ban đầu cho console
+        if (saved_attributes != 0) {
+            SetConsoleTextAttribute(hConsole, saved_attributes);
+        }
+        file.close();
+    }
+}
+
+void cmd_addfile(Command& command) {
+    for (const auto& [flag, params] : command.map) {
+        if (params.empty()) continue;
+        std::wstring filename = params[0];
+        std::wofstream file(filename.c_str());
+        if (!file) {
+            std::wcout << L"Không thể tạo file: " << filename << L".\n";
+            continue;
+        }
+        file.close();
+        std::wcout << L"Đã tạo file: " << filename << L".\n";
+    }
+}
+
+void cmd_writefile(Command& command) {
+    // Ghi đè nội dung file
+    for (const auto& [flag, params] : command.map) {
+        if (params.empty()) continue;
+        std::wstring filename = params[0];
+        std::wofstream file(filename.c_str(), std::ios::trunc);
+        if (!file) {
+            std::wcout << L"Không thể mở file: " << filename << L".\n";
+            continue;
+        }
+        std::wcout << L"Ghi đè nội dung file " << filename << L".\n";
+        std::wcout << L"Để thoát khỏi trình ghi, nhập ### rồi Enter.\n";
+        
+        // Trích lấy console và info
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+        WORD saved_attributes = 0;
+
+        // Đặt màu mới cho console
+        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
+            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
+            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
+                hConsole,
+                FOREGROUND_GREEN | FOREGROUND_INTENSITY
+            );
+        }
+
+        std::wstring content;
+        while (true) {
+            std::getline(std::wcin, content);
+            if (content == L"###") break;
+            file << content << '\n';
+        }
+
+        // Đặt lại màu ban đầu cho console
+        if (saved_attributes != 0) {
+            SetConsoleTextAttribute(hConsole, saved_attributes);
+        }
+
+        file.close();
+        std::wcout << L"Ghi đè thành công.\n";
+    }
+}
+
+void cmd_viewdir(Command& command) {
+    // Hiển thị danh sách file và thư mục trong thư mục hiện tại
+    if (command.map.size() != 0) {
+        std::wcout << L"Lệnh viewdir không được chứa cờ.\n";
+        return;
+    }
+
+    WIN32_FIND_DATAW findFileData;
+    HANDLE hFind = FindFirstFileW((currentPath + L"\\*").c_str(), &findFileData);
+
+    std::wcout << L"Các file và thư mục trong " << currentPath << L":\n";
+    
+    int cnt = 1;
+    do {
+        if (wcscmp(findFileData.cFileName, L".") != 0 &&
+            wcscmp(findFileData.cFileName, L"..") != 0)
+        {
+            std::wcout << L"    " << L"[" << cnt << L"]" << findFileData.cFileName;
+        }
+        cnt++;
+        // Nếu là thư mục, in thêm dấu /
+        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            std::wcout << L"    (Thư mục)\n";
+        } else {
+            std::wcout << L"    (File)\n";
+        }
+    } while (FindNextFileW(hFind, &findFileData) != 0);
+
+    FindClose(hFind);
+}
+
+void cmd_adddir(Command& command) {
+    // Cần cờ -name
+    if (command.map.size() != 1 ||
+        command.map.find(L"-dir") == command.map.end())
+    {
+        std::wcout << L"Lệnh adddir chỉ chứa cờ -dir.\n";
+        return;
+    }
+
+    // Lấy tên thư mục từ cờ
+    std::wstring dirName = command.map[L"-name"][0];
+    std::wstring dirPath = currentPath + L"\\" + std::wstring(dirName.begin(), dirName.end());
+
+    // Tạo thư mục mới
+    if (CreateDirectoryW(dirPath.c_str(), nullptr)) {
+        std::wcout << L"Đã tạo thư mục: " << dirName << L".\n";
+    } else {
+        std::wcout << L"Không thể tạo thư mục: " << dirName << L". Kiểm tra lại tên thư mục.\n";
+    }
+}
+
+void cmd_rename(Command& command) {
+    // Cần cả -targetname và -newname
+    if (command.map.find(L"-targetname") == command.map.end() ||
+        command.map.find(L"-newname") == command.map.end()) {
+        std::wcout << L"Lệnh đổi tên thiếu tham số!\n";
+        return;
+    }
+
+    std::wstring oldName = command.map[L"-targetname"][0];
+    std::wstring newName = command.map[L"-newname"][0];
+    std::wstring oldNameW =std::wstring(oldName.begin(), oldName.end());
+    std::wstring newNameW =std::wstring(newName.begin(), newName.end());
+
+    // Đổi tên file/thư mục
+    if (MoveFileW(oldNameW.c_str(), newNameW.c_str())) {
+        std::wcout << L"Đổi tên thành công: " << oldName << L" -> " << newName << L".\n";
+    } else {
+        std::wcout << L"Đổi tên thất bại! Kiểm tra lại tên file/thư mục.\n";
+    }
+}
+
+void cmd_delete(Command& command) {
+    // Cần -targetname
+    if (command.map.find(L"-targetname") == command.map.end()) {
+        std::wcout << L"Lệnh xóa thiếu tham số!\n";
+        return;
+    }
+    std::wstring target = command.map[L"-targetname"][0];
+    std::wstring targetW =std::wstring(target.begin(), target.end());
+
+    // Thử xóa file trước
+    if (DeleteFileW(targetW.c_str())) {
+        std::wcout << L"Đã xóa file: " << target << L".\n";
+        return;
+    }
+    // Nếu không phải file, thử xóa thư mục rỗng
+    if (RemoveDirectoryW(targetW.c_str())) {
+        std::wcout << L"Đã xóa thư mục: " << target << L".\n";
+        return;
+    }
+
+    std::wcout << L"Xóa thất bại! Kiểm tra lại tên file/thư mục.\n";
 }
 
 void cmd_forward(Command& command) {
@@ -810,16 +1121,24 @@ void cmd_forward(Command& command) {
     SetCurrentDirectoryW(currentPath.c_str());
 }
 
-void cmd_backward() {
+void cmd_backward(Command& command) {
+    if (command.map.size() != 0) {
+        std::wcout << L"Lệnh backward không có cờ tham số.\n";
+        return;
+    }
+    
+    // Kiểm tra có ở thư mục gốc không
     if (currentPath == rootPath) {
         std::wcout << L"Đã ở thư mục gốc, không thể quay lại nữa.\n";
         return;
     }
-    // Remove last component
+    
+    // Lấy đường dẫn thư mục cha
     size_t pos = currentPath.find_last_of(L"\\/");
     if (pos ==std::wstring::npos) return;
     std::wstring parentPath = currentPath.substr(0, pos);
-    // Prevent going above rootPath
+    
+    // Kiểm tra nếu thư mục cha vượt ra ngoài rootPath
     if (parentPath.length() < rootPath.length() 
         || parentPath.substr(0, rootPath.length()) != rootPath) 
     {
@@ -828,6 +1147,8 @@ void cmd_backward() {
     } else {
         currentPath = parentPath;
     }
+
+    // Đặt thư mục hiện tại
     SetCurrentDirectoryW(currentPath.c_str());
 }
 
@@ -839,6 +1160,7 @@ void cmd_return(Command& command) {
 void cmd_build(Command& command) {
     bool supported = false;
     std::wstring cmd;
+    
     if (command.map.size() == 2
         && command.map.find(L"-cpp") != command.map.end()
         && command.map.find(L"-exe") != command.map.end())
@@ -913,6 +1235,44 @@ void cmd_run(Command& command) {
 
     int ret = _wsystem(cmd.c_str());
     if (ret == -1) {
+        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
+    } else {
+        std::wcout << L"Chạy file thành công.\n";
+    }
+}
+
+void cmd_runbatch(Command& command) {
+    // Kiểm tra cờ tham số tồn tại không
+    if (command.map.find(L"-argS") == command.map.end()) {
+        std::wcout << L"Lệnh thiếu cờ tham số!\n";
+        return;
+    }
+
+    // Kiểm tra -bg flag
+    bool runInBackground = false;
+    if (command.map.find(L"-bg") != command.map.end()) {
+        const auto& bgParams = command.map[L"-bg"];
+        if (!bgParams.empty() && (bgParams[0] == L"yes")) {
+            runInBackground = true;
+        }
+    }
+
+    // Xây dựng lệnh
+    std::wstring cmd;
+    if (runInBackground) {
+        cmd = L"start \"\" /B cmd /c ";
+    } else {
+        cmd = L"cmd /c ";
+    }
+
+    // Thêm các tham số vào lệnh
+    std::vector<std::wstring> params = command.map[L"-argS"];
+    for (auto& param: params) {
+        cmd += L"\"" + param + L"\" ";
+    }
+
+    // Thực thi lệnh
+    if (_wsystem(cmd.c_str()) == -1) {
         std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
     } else {
         std::wcout << L"Chạy file thành công.\n";
@@ -1015,168 +1375,168 @@ void cmd_runjar(Command& command) {
     }
 }
 
-void cmd_create(Command& command) {
-    for (const auto& [flag, params] : command.map) {
-        if (params.empty()) continue;
-        std::wstring filename = params[0];
-        std::wofstream file(filename.c_str());
-        if (!file) {
-            std::wcout << L"Không thể tạo file: " << filename << L".\n";
-            continue;
-        }
-        file.close();
-        std::wcout << L"Đã tạo file: " << filename << L".\n";
-    }
-}
-
-void cmd_view(Command& command) {
-    // Mở và hiển thị nội dung file
-    for (const auto& [flag, params] : command.map) {
-        if (params.empty()) continue;
-        std::wstring filename = params[0];
-        std::wifstream file(filename.c_str());
-        if (!file) {
-            std::wcout << L"Không thể mở file: " << filename << L".\n";
-            continue;
-        }
-        std::wcout << L"Mở file " << filename << L" thành công. " << L"Nội dung file:\n";
-        std::wstring line;
-
-        // Trích lấy console và info
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-        WORD saved_attributes = 0;
-
-        // Đặt màu mới cho console
-        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
-            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
-            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
-                hConsole,
-                FOREGROUND_BLUE | FOREGROUND_INTENSITY
-            ); 
-        }
-
-        // In lên console với màu mới
-        while (std::getline(file, line)) {
-            std::wcout << line << L"\n";
-        }
-
-        // Đặt lại màu ban đầu cho console
-        if (saved_attributes != 0) {
-            SetConsoleTextAttribute(hConsole, saved_attributes);
-        }
-        file.close();
-    }
-}
-
-void cmd_write(Command& command) {
-    // Ghi đè nội dung file
-    for (const auto& [flag, params] : command.map) {
-        if (params.empty()) continue;
-        std::wstring filename = params[0];
-        std::wofstream file(filename.c_str());
-        if (!file) {
-            std::wcout << L"Không thể mở file: " << filename << L".\n";
-            continue;
-        }
-        std::wcout << L"Ghi đè nội dung file " << filename << L".\n";
-        std::wcout << L"Để thoát khỏi trình ghi, nhập ### rồi Enter.\n";
-        
-        // Trích lấy console và info
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-        WORD saved_attributes = 0;
-
-        // Đặt màu mới cho console
-        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
-            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
-            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
-                hConsole,
-                FOREGROUND_GREEN | FOREGROUND_INTENSITY
-            );
-        }
-
-        std::wstring content;
-        while (true) {
-            std::getline(std::wcin, content);
-            if (content == L"###") break;
-            file << content << '\n';
-        }
-
-        // Đặt lại màu ban đầu cho console
-        if (saved_attributes != 0) {
-            SetConsoleTextAttribute(hConsole, saved_attributes);
-        }
-
-        file.close();
-        std::wcout << L"Ghi đè thành công.\n";
-    }
-}
-
-void cmd_rename(Command& command) {
-    // Cần cả -targetname và -newname
-    if (command.map.find(L"-targetname") == command.map.end() ||
-        command.map.find(L"-newname") == command.map.end()) {
-        std::wcout << L"Lệnh đổi tên thiếu tham số!\n";
+void cmd_sysinfo(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh sysinfo không có cờ tham số.\n";
         return;
     }
 
-    std::wstring oldName = command.map[L"-targetname"][0];
-    std::wstring newName = command.map[L"-newname"][0];
-    std::wstring oldNameW =std::wstring(oldName.begin(), oldName.end());
-    std::wstring newNameW =std::wstring(newName.begin(), newName.end());
+    // Lấy thông tin hệ thống
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
 
-    // Đổi tên file/thư mục
-    if (MoveFileW(oldNameW.c_str(), newNameW.c_str())) {
-        std::wcout << L"Đổi tên thành công: " << oldName << L" -> " << newName << L".\n";
+    // Lấy thông tin bộ nhớ
+    MEMORYSTATUSEX statex;
+    statex.dwLength = sizeof(statex);
+    GlobalMemoryStatusEx(&statex);
+
+    // Lấy tên máy tính
+    wchar_t computerName[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
+    GetComputerNameW(computerName, &size);
+
+    // In thông tin hệ thống
+    std::wcout << L"--- Thông tin hệ thống ---\n";
+    std::wcout << L"Tên máy: " << computerName << L"\n";
+    std::wcout << L"Số lượng CPU: " << si.dwNumberOfProcessors << L"\n";
+    std::wcout << L"Kiểu CPU: " << si.dwProcessorType << L"\n";
+    std::wcout << L"Tổng RAM: " << (statex.ullTotalPhys / (1024 * 1024)) << L" MB\n";
+    std::wcout << L"RAM khả dụng: " << (statex.ullAvailPhys / (1024 * 1024)) << L" MB\n";
+}
+
+void cmd_timeinfo(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh timeinfo không có cờ tham số.\n";
+        return;
+    }
+
+    // Lấy thời gian hệ thống
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+
+    // In thông tin thời gian
+    std::wcout << L"--- Thời gian hệ thống ---\n";
+    std::wcout << L"Ngày: " << st.wDay << L"/" << st.wMonth << L"/" << st.wYear << L"\n";
+    std::wcout << L"Giờ: " << st.wHour << L":" << st.wMinute << L":" << st.wSecond << L"\n";
+}
+
+void cmd_userinfo(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh userinfo không có cờ tham số.\n";
+        return;
+    }
+
+    // Lấy thông tin người dùng
+    wchar_t username[256];
+    DWORD size;
+    if (GetUserNameW(username, &size)) {
+        std::wcout << L"--- Thông tin người dùng ---\n";
+        std::wcout << L"Tên người dùng: " << username << L"\n";
     } else {
-        std::wcout << L"Đổi tên thất bại! Kiểm tra lại tên file/thư mục.\n";
+        std::wcout << L"Không thể lấy thông tin người dùng.\n";
     }
 }
 
-void cmd_delete(Command& command) {
-    // Cần -targetname
-    if (command.map.find(L"-targetname") == command.map.end()) {
-        std::wcout << L"Lệnh xóa thiếu tham số!\n";
-        return;
-    }
-    std::wstring target = command.map[L"-targetname"][0];
-    std::wstring targetW =std::wstring(target.begin(), target.end());
-
-    // Thử xóa file trước
-    if (DeleteFileW(targetW.c_str())) {
-        std::wcout << L"Đã xóa file: " << target << L".\n";
-        return;
-    }
-    // Nếu không phải file, thử xóa thư mục rỗng
-    if (RemoveDirectoryW(targetW.c_str())) {
-        std::wcout << L"Đã xóa thư mục: " << target << L".\n";
+void cmd_ipinfo(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh ipinfo không có cờ tham số.\n";
         return;
     }
 
-    std::wcout << L"Xóa thất bại! Kiểm tra lại tên file/thư mục.\n";
+    std::wcout << L"--- Thông tin IP/network adapters (ipconfig) ---\n";
+    int ret = _wsystem(L"ipconfig /all");
+    if (ret == -1) {
+        std::wcout << L"Không thể thực thi lệnh ipconfig.\n";
+    }
 }
 
+void cmd_ping(Command& command) {
+    // Kiểm tra cờ tham số tồn tại không
+    if (command.map.size() != 1 ||
+        command.map.find(L"-host") == command.map.end())
+    {
+        std::wcout << L"Lệnh ping thiếu cờ tham số.\n";
+        return;
+    }
+
+    std::wstring host = command.map[L"-host"][0];
+    std::wstring cmd = L"ping " + host;
+
+    if (_wsystem(cmd.c_str()) == -1) {
+        std::wcout << L"Ping thất bại. Hãy thử lại.\n";
+    }
+}
+
+void cmd_traceroute(Command& command) {
+    // Kiểm tra cờ tham số tồn tại không
+    if (command.map.size() != 1 ||
+        command.map.find(L"-host") == command.map.end())
+    {
+        std::wcout << L"Lệnh traceroute thiếu cờ tham số.\n";
+        return;
+    }
+
+    std::wstring host = command.map[L"-host"][0];
+    std::wstring cmd = L"tracert " + host;
+
+    if (_wsystem(cmd.c_str()) == -1) {
+        std::wcout << L"Traceroute thất bại. Hãy thử lại.\n";
+    }
+}
+
+void cmd_nslookup(Command& command) {
+    // Kiểm tra cờ tham số tồn tại không
+    if (command.map.size() != 1 ||
+        command.map.find(L"-host") == command.map.end())
+    {
+        std::wcout << L"Lệnh nslookup thiếu cờ tham số.\n";
+        return;
+    }
+
+    std::wstring host = command.map[L"-host"][0];
+    std::wstring cmd = L"nslookup " + host;
+
+    if (_wsystem(cmd.c_str()) == -1) {
+        std::wcout << L"Nslookup thất bại. Hãy thử lại.\n";
+    }
+}
+
+void cmd_portcheck(Command& command) {
+    // Kiểm tra cờ tham số tồn tại không
+    if (command.map.size() != 1 ||
+        command.map.find(L"-port") == command.map.end())
+    {
+        std::wcout << L"Lệnh portcheck thiếu cờ tham số.\n";
+        return;
+    }
+
+    std::wstring port = command.map[L"-port"][0];
+    std::wstring cmd = L"netstat -ano | findstr :" + port;
+
+    if (_wsystem(cmd.c_str()) == -1) {
+        std::wcout << L"Kiểm tra cổng thất bại. Hãy thử lại.\n";
+    }
+}
 
 void executeCommand(Command& command) {
     if (command.name == L"intro") {
-        cmd_intro();
+        cmd_intro(command);
     } else if (command.name == L"help") {
-        cmd_help();
+        cmd_help(command);
     } else if (command.name == L"exit") {
-        cmd_exit();
+        cmd_exit(command);
     } else if (command.name == L"example") {
-        cmd_example();
+        cmd_example(command);
     } else if (command.name == L"echo") {
         cmd_echo(command);
     } else if (command.name == L"clrscr") {
-        cmd_clrscr();
+        cmd_clrscr(command);
     } else if (command.name == L"setfgcol") {
         cmd_setfgcol(command);
     } else if (command.name == L"setbgcol") {
         cmd_setbgcol(command);
     } else if (command.name == L"viewvar") {
-        cmd_viewvar();
+        cmd_viewvar(command);
     } else if (command.name == L"setvar") {
         cmd_setvar(command);
     } else if (command.name == L"getvar") {
@@ -1184,35 +1544,57 @@ void executeCommand(Command& command) {
     } else if (command.name == L"rmvar") {
         cmd_rmvar(command);
     } else if (command.name == L"viewpath") {
-        cmd_viewpath();
+        cmd_viewpath(command);
     } else if (command.name == L"addpath") {
         cmd_addpath(command);
     } else if (command.name == L"rmpath") {
         cmd_rmpath(command);
+    } else if (command.name == L"viewdir") {
+        cmd_viewdir(command);
+    } else if (command.name == L"adddir") {
+        cmd_adddir(command);
+    } else if (command.name == L"viewfile") {
+        cmd_viewfile(command);
+    } else if (command.name == L"addfile") {
+        cmd_addfile(command);
+    } else if (command.name == L"writefile") {
+        cmd_writefile(command);
+    } else if (command.name == L"rename") {
+        cmd_rename(command);
+    } else if (command.name == L"delete") {
+        cmd_delete(command);
     } else if (command.name == L"forward") {
         cmd_forward(command);
     } else if (command.name == L"backward") {
-        cmd_backward();
+        cmd_backward(command);
     } else if (command.name == L"return") {
         cmd_return(command);
     } else if (command.name == L"build") {
         cmd_build(command);
     } else if (command.name == L"run") {
         cmd_run(command);
+    } else if (command.name == L"runbatch") {
+        cmd_runbatch(command);
     } else if (command.name == L"runclass") {
         cmd_runclass(command);
     } else if (command.name == L"runjar") {
         cmd_runjar(command);
-    } else if (command.name == L"create") {
-        cmd_create(command);
-    } else if (command.name == L"view") {
-        cmd_view(command);
-    } else if (command.name == L"write") {
-        cmd_write(command);
-    } else if (command.name == L"rename") {
-        cmd_rename(command);
-    } else if (command.name == L"delete") {
-        cmd_delete(command);
+    } else if (command.name == L"sysinfo") {
+        cmd_sysinfo(command);
+    } else if (command.name == L"timeinfo") {
+        cmd_timeinfo(command);
+    } else if (command.name == L"userinfo") {
+        cmd_userinfo(command);
+    } else if (command.name == L"ipinfo") {
+        cmd_ipinfo(command);
+    } else if (command.name == L"ping") {
+        cmd_ping(command);
+    } else if (command.name == L"traceroute") {
+        cmd_traceroute(command);
+    } else if (command.name == L"nslookup") {
+        cmd_nslookup(command);
+    } else if (command.name == L"portcheck") {
+        cmd_portcheck(command);
     } else {
         std::wcout << L"Lệnh này không được hỗ trợ.\n";
     }

@@ -15,6 +15,8 @@
 #include <windows.h>
 #include <fcntl.h>
 #include <io.h>
+#include <psapi.h>
+
 
 // ------------Các cấu trúc dữ liệu của chương trình------------------------
 /*
@@ -76,12 +78,29 @@ struct CommandDictionary {
 
 // ------------Các biến toàn cục của chương trình------------------------
 CommandDictionary commandDict = CommandDictionary();        // Lưu trữ các lệnh và cờ
-std::unordered_map<std::wstring, HANDLE> currentProcesses;  // Lưu trữ các tiến trình
+std::unordered_map<DWORD, HANDLE> currentProcesses;  // Lưu trữ các tiến trình theo PID
 std::wstring rootPath;                                      // Đường dẫn gốc
 std::wstring currentPath;                                   // Đường dẫn hiện tại
 std::unordered_map<std::wstring, std::wstring> variables;   // Biến của tiến trình
 
 // ------------Các hàm tiện ích của chương trình------------------------
+// Handler for Ctrl+C and other console events
+BOOL WINAPI ConsoleHandler(DWORD signal) {
+    if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
+        std::wcout << L"\nĐang kết thúc tất cả tiến trình do Ctrl+C...\n";
+        for (auto& [pid, hProcess] : currentProcesses) {
+            if (hProcess && TerminateProcess(hProcess, 0)) {
+                std::wcout << L"Đã kết thúc tiến trình PID: " << pid << L"\n";
+                CloseHandle(hProcess);
+            }
+        }
+        currentProcesses.clear();
+        std::wcout << L"Đã kết thúc tất cả tiến trình. Thoát chương trình.\n";
+        ExitProcess(0);
+    }
+    return FALSE;
+}
+
 void initializeRootDirectory() {
     // Lấy đường dẫn thư mục hiện tại khi chạy chương trình
     wchar_t buffer[MAX_PATH];
@@ -128,8 +147,8 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"viewpath"] = {
         L"viewpath", L"Hiển thị các biến trong PATH", {}
     };
-    commandDict.commandMap[L"backward"] = {
-        L"backward", L"Quay lại thư mục cha", {}
+    commandDict.commandMap[L"up"] = {
+        L"up", L"Quay lại thư mục cha", {}
     };
     commandDict.commandMap[L"return"] = {
         L"return", L"Quay về thư mục gốc", {}
@@ -175,8 +194,8 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"rmpath"] = {
         L"rmpath", L"Xóa biến trong PATH", {L"-path"}
     };
-    commandDict.commandMap[L"forward"] = {
-        L"forward", L"Chuyển đến thư mục con", {L"-dir"}
+    commandDict.commandMap[L"down"] = {
+        L"down", L"Chuyển đến thư mục con", {L"-dir"}
     };
     commandDict.commandMap[L"adddir"] = {
         L"adddir", L"Tạo thư mục", {L"-dir"}
@@ -196,8 +215,20 @@ void initializeCommandDictionary() {
     commandDict.commandMap[L"delete"] = {
         L"delete", L"Xóa thư mục hoặc file", {L"-targetname"}
     };
+    commandDict.commandMap[L"viewproc"] = {
+        L"viewproc", L"Hiển thị danh sách các tiến trình được quản lý bới shell", {}
+    };
+    commandDict.commandMap[L"killproc"] = {
+        L"killproc", L"Kết thúc tiến trình đang chạy", {L"-pidS"}
+    };
+    commandDict.commandMap[L"suspendproc"] = {
+        L"suspendproc", L"Tạm dừng tiến trình đang chạy", {L"-pidS"}
+    };
+    commandDict.commandMap[L"resumeproc"] = {
+        L"resumeproc", L"Tiếp tục tiến trình đã tạm dừng", {L"-pidS"}
+    };
     commandDict.commandMap[L"build"] = {
-        L"build", L"Xây dựng file thực thi từ file chương trình", {L"-cpp", L"-exe", L"-java"}
+        L"build", L"Xây dựng file thực thi từ file chương trình", {L"-c", L"-cpp", L"-exe", L"-java"}
     };
     commandDict.commandMap[L"run"] = {
         L"run", L"Chạy file (được hỗ trợ trong PATHEXT) cùng với dãy tham số", {L"-argS", L"-bg"}
@@ -234,6 +265,9 @@ void initializeCommandDictionary() {
     commandDict.flagMap[L"-newname"] = {
         L"-newname", L"Tên mới của thư mục hoặc file"
     };
+    commandDict.flagMap[L"-c"] = {
+        L"-c", L"File C"
+    };
     commandDict.flagMap[L"-cpp"] = {
         L"-cpp", L"File C++"
     };
@@ -264,6 +298,9 @@ void initializeCommandDictionary() {
     commandDict.flagMap[L"-bat"] = {
         L"-bat", L"File BAT"
     };
+    commandDict.flagMap[L"-pidS"] = {
+        L"-pidS", L"Mã tiến trình (PID) của tiến trình đang chạy"
+    };
     commandDict.flagMap[L"-color"] = {
         L"-color",
         L"Màu sắc của console. Các giá trị hợp lệ:\n"
@@ -277,10 +314,10 @@ void initializeCommandDictionary() {
         L"        * white"
     };
     commandDict.flagMap[L"-key"] = {
-        L"-key", L"Tên biến trong tiến trình"
+        L"-key", L"Tên biến trong shell"
     };
     commandDict.flagMap[L"-value"] = {
-        L"-value", L"Giá trị của biến trong tiến trình"
+        L"-value", L"Giá trị của biến trong shell"
     };
     commandDict.flagMap[L"-path"] = {
         L"-path", L"Đường dẫn của biến trong PATH"
@@ -437,6 +474,24 @@ void printFlagList() {
     }
 }
 
+void handleProcessResult(BOOL success, PROCESS_INFORMATION& pi, bool runInBackground) {
+    if (!success) {
+        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
+        return;
+    }
+
+    if (runInBackground) {
+        currentProcesses[pi.dwProcessId] = pi.hProcess;
+        std::wcout << L"Chạy file thành công (background).\n";
+        CloseHandle(pi.hThread);
+    } else {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        std::wcout << L"Chạy file thành công.\n";
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+}
+
 // ------------Các hàm lệnh của chương trình------------------------
 // Hàm hiển thị thông tin chương trình
 void cmd_intro() {
@@ -538,7 +593,7 @@ void cmd_example(Command& command) {
     }
 
     std::wcout << L"Ví dụ sử dụng phần mềm MoonShell:\n";
-    std::wcout << L"1. Chuyển đến thư mục con: forward -dir example_matmul\n";
+    std::wcout << L"1. Chuyển đến thư mục con: down -dir example_matmul\n";
     std::wcout << L"2. Xây dựng file .exe từ file .cpp: build -cpp matrix_generator.cpp -exe matrix_generator.exe\n";
     std::wcout << L"3. Chạy file: run -argS matrix_generator.exe 128 256 512\n";
     std::wcout << L"4. Chạy file .class: runclass -argS matrix_multiplication matrix1.csv matrix2.csv matrix3.csv\n";
@@ -749,9 +804,9 @@ void cmd_getvar(Command& command) {
     std::wstring varKey = command.map[L"-key"][0];
 
     // Kiểm tra biến có tồn tại không
-    auto it = variables.find(varKey);
-    if (it != variables.end()) {
-        std::wcout << L"Giá trị của biến " << varKey << L": " << it->second << L"\n";
+    auto varpair = variables.find(varKey);
+    if (varpair != variables.end()) {
+        std::wcout << L"Giá trị của biến " << varKey << L": " << varpair->second << L"\n";
     } else {
         std::wcout << L"Biến " << varKey << L" không tồn tại trong tiến trình.\n";
     }
@@ -770,9 +825,9 @@ void cmd_rmvar(Command& command) {
     std::wstring varKey = command.map[L"-key"][0];
 
     // Xóa biến trong tiến trình
-    auto it = variables.find(varKey);
-    if (it != variables.end()) {
-        variables.erase(it);
+    auto varpair = variables.find(varKey);
+    if (varpair != variables.end()) {
+        variables.erase(varpair);
         std::wcout << L"Đã xóa biến " << varKey << L" khỏi tiến trình.\n";
     } else {
         std::wcout << L"Biến " << varKey << L" không tồn tại trong tiến trình.\n";
@@ -899,7 +954,7 @@ void cmd_rmpath(Command& command) {
     } else {
         std::wcout << L"Đường dẫn không tồn tại trong PATH.\n";
     }
-} 
+}
 
 void cmd_viewfile(Command& command) {
     // Mở và hiển thị nội dung file
@@ -914,29 +969,11 @@ void cmd_viewfile(Command& command) {
         std::wcout << L"Mở file " << filename << L" thành công. " << L"Nội dung file:\n";
         std::wstring line;
 
-        // Trích lấy console và info
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-        WORD saved_attributes = 0;
-
-        // Đặt màu mới cho console
-        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
-            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
-            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
-                hConsole,
-                FOREGROUND_BLUE | FOREGROUND_INTENSITY
-            );
-        }
-
         // In lên console với màu mới
         while (std::getline(file, line)) {
             std::wcout << line << L"\n";
         }
 
-        // Đặt lại màu ban đầu cho console
-        if (saved_attributes != 0) {
-            SetConsoleTextAttribute(hConsole, saved_attributes);
-        }
         file.close();
     }
 }
@@ -967,31 +1004,12 @@ void cmd_writefile(Command& command) {
         }
         std::wcout << L"Ghi đè nội dung file " << filename << L".\n";
         std::wcout << L"Để thoát khỏi trình ghi, nhập ### rồi Enter.\n";
-        
-        // Trích lấy console và info
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-        WORD saved_attributes = 0;
-
-        // Đặt màu mới cho console
-        if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo)) {   // Lấy màu console
-            saved_attributes = consoleInfo.wAttributes;             // Lưu trữ màu ban đầu
-            SetConsoleTextAttribute(                                // Đặt màu xanh cho console
-                hConsole,
-                FOREGROUND_GREEN | FOREGROUND_INTENSITY
-            );
-        }
 
         std::wstring content;
         while (true) {
             std::getline(std::wcin, content);
             if (content == L"###") break;
             file << content << '\n';
-        }
-
-        // Đặt lại màu ban đầu cho console
-        if (saved_attributes != 0) {
-            SetConsoleTextAttribute(hConsole, saved_attributes);
         }
 
         file.close();
@@ -1001,7 +1019,7 @@ void cmd_writefile(Command& command) {
 
 void cmd_viewdir(Command& command) {
     // Hiển thị danh sách file và thư mục trong thư mục hiện tại
-    if (command.map.size() != 0) {
+    if (!command.map.empty()) {
         std::wcout << L"Lệnh viewdir không được chứa cờ.\n";
         return;
     }
@@ -1009,22 +1027,27 @@ void cmd_viewdir(Command& command) {
     WIN32_FIND_DATAW findFileData;
     HANDLE hFind = FindFirstFileW((currentPath + L"\\*").c_str(), &findFileData);
 
+    if (hFind == INVALID_HANDLE_VALUE) {
+        std::wcout << L"Không thể truy cập thư mục hiện tại.\n";
+        return;
+    }
+
     std::wcout << L"Các file và thư mục trong " << currentPath << L":\n";
-    
     int cnt = 1;
     do {
-        if (wcscmp(findFileData.cFileName, L".") != 0 &&
-            wcscmp(findFileData.cFileName, L"..") != 0)
+        // Bỏ qua "." và ".."
+        if (wcscmp(findFileData.cFileName, L".") == 0 ||
+            wcscmp(findFileData.cFileName, L"..") == 0)
         {
-            std::wcout << L"    " << L"[" << cnt << L"]" << findFileData.cFileName;
+            continue;
         }
+        // Bỏ qua tên rỗng
+        if (wcslen(findFileData.cFileName) == 0) {
+            continue;
+        }
+
+        std::wcout << L"    [" << cnt << L"] " << findFileData.cFileName << L"\n";
         cnt++;
-        // Nếu là thư mục, in thêm dấu /
-        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            std::wcout << L"    (Thư mục)\n";
-        } else {
-            std::wcout << L"    (File)\n";
-        }
     } while (FindNextFileW(hFind, &findFileData) != 0);
 
     FindClose(hFind);
@@ -1095,11 +1118,139 @@ void cmd_delete(Command& command) {
     std::wcout << L"Xóa thất bại! Kiểm tra lại tên file/thư mục.\n";
 }
 
-void cmd_forward(Command& command) {
+void cmd_viewproc(Command& command) {
+    if (!command.map.empty()) {
+        std::wcout << L"Lệnh viewproc không có cờ tham số.\n";
+        return;
+    }
+
+    if (currentProcesses.empty()) {
+        std::wcout << L"Không có tiến trình nào đang được shell quản lý.\n";
+        return;
+    }
+
+    std::wcout << L"Các tiến trình đang được shell quản lý:\n";
+    int idx = 1;
+    for (const auto& [pid, hProcess] : currentProcesses) {
+        wchar_t processName[MAX_PATH] = L"<Không xác định>";
+        HMODULE hMod;
+        DWORD cbNeeded;
+        if (EnumProcessModules(hProcess, &hMod, sizeof(hMod), &cbNeeded)) {
+            GetModuleBaseNameW(hProcess, hMod, processName, sizeof(processName) / sizeof(wchar_t));
+        }
+        std::wcout << L"    [" << idx++ << L"] PID: " << pid << L" - " << processName << L"\n";
+    }
+}
+
+void cmd_killproc(Command& command) {
+    // Cần cờ -pidS
+    if (command.map.size() != 1 ||
+        command.map.find(L"-pidS") == command.map.end())
+    {
+        std::wcout << L"Lệnh killproc thiếu cờ -pidS.\n";
+        return;
+    }
+
+    std::vector<std::wstring> pids = command.map[L"-pidS"];
+    for (const auto& pidStr : pids) {
+        DWORD pid = 0;
+        try {
+            pid = std::stoul(pidStr);
+        } catch (...) {
+            std::wcout << L"PID không hợp lệ: " << pidStr << L"\n";
+            continue;
+        }
+
+        auto procpair = currentProcesses.find(pid);
+        if (procpair == currentProcesses.end()) {
+            std::wcout << L"PID " << pid << L" không được shell quản lý.\n";
+            continue;
+        }
+
+        HANDLE hProcess = procpair->second;
+        if (TerminateProcess(hProcess, 0)) {
+            std::wcout << L"Đã kết thúc tiến trình PID: " << pid << L"\n";
+            CloseHandle(hProcess);
+            currentProcesses.erase(procpair);
+        } else {
+            std::wcout << L"Không thể kết thúc tiến trình PID: " << pid << L"\n";
+        }
+    }
+}
+
+void cmd_suspendproc(Command& command) {
+    // Cần cờ -pidS
+    if (command.map.size() != 1 ||
+        command.map.find(L"-pidS") == command.map.end())
+    {
+        std::wcout << L"Lệnh suspendproc thiếu cờ -pidS.\n";
+        return;
+    }
+
+    std::vector<std::wstring> pids = command.map[L"-pidS"];
+    for (const auto& pidStr : pids) {
+        DWORD pid = 0;
+        try {
+            pid = std::stoul(pidStr);
+        } catch (...) {
+            std::wcout << L"PID không hợp lệ: " << pidStr << L"\n";
+            continue;
+        }
+
+        auto procpair = currentProcesses.find(pid);
+        if (procpair == currentProcesses.end()) {
+            std::wcout << L"PID " << pid << L" không được shell quản lý.\n";
+            continue;
+        }
+
+        HANDLE hProcess = procpair->second;
+        if (SuspendThread(hProcess) != (DWORD)-1) {
+            std::wcout << L"Đã tạm dừng tiến trình PID: " << pid << L"\n";
+        } else {
+            std::wcout << L"Không thể tạm dừng tiến trình PID: " << pid << L"\n";
+        }
+    }
+}
+
+void cmd_resumeproc(Command& command) {
+    // Cần cờ -pidS
+    if (command.map.size() != 1 ||
+        command.map.find(L"-pidS") == command.map.end())
+    {
+        std::wcout << L"Lệnh resumeproc thiếu cờ -pidS.\n";
+        return;
+    }
+
+    std::vector<std::wstring> pids = command.map[L"-pidS"];
+    for (const auto& pidStr : pids) {
+        DWORD pid = 0;
+        try {
+            pid = std::stoul(pidStr);
+        } catch (...) {
+            std::wcout << L"PID không hợp lệ: " << pidStr << L"\n";
+            continue;
+        }
+
+        auto procpair = currentProcesses.find(pid);
+        if (procpair == currentProcesses.end()) {
+            std::wcout << L"PID " << pid << L" không được shell quản lý.\n";
+            continue;
+        }
+
+        HANDLE hProcess = procpair->second;
+        if (ResumeThread(hProcess) != (DWORD)-1) {
+            std::wcout << L"Đã tiếp tục tiến trình PID: " << pid << L"\n";
+        } else {
+            std::wcout << L"Không thể tiếp tục tiến trình PID: " << pid << L"\n";
+        }
+    }
+}
+
+void cmd_down(Command& command) {
     if (command.map.size() != 1 ||
         command.map.find(L"-dir") == command.map.end())
     {
-        std::wcout << L"Lệnh forward thiếu cờ tham số.\n";
+        std::wcout << L"Lệnh down thiếu cờ tham số.\n";
         return;
     }
     
@@ -1121,9 +1272,9 @@ void cmd_forward(Command& command) {
     SetCurrentDirectoryW(currentPath.c_str());
 }
 
-void cmd_backward(Command& command) {
+void cmd_up(Command& command) {
     if (command.map.size() != 0) {
-        std::wcout << L"Lệnh backward không có cờ tham số.\n";
+        std::wcout << L"Lệnh up không có cờ tham số.\n";
         return;
     }
     
@@ -1162,6 +1313,22 @@ void cmd_build(Command& command) {
     std::wstring cmd;
     
     if (command.map.size() == 2
+        && command.map.find(L"-c") != command.map.end()
+        && command.map.find(L"-exe") != command.map.end())
+    {
+        // srcFile: .c, outFile: .exe
+        supported = true;
+
+        std::wstring srcFile =std::wstring(
+            command.map[L"-c"][0].begin(), command.map[L"-c"][0].end()
+        );
+        std::wstring outFile =std::wstring(
+            command.map[L"-exe"][0].begin(), command.map[L"-exe"][0].end()
+        );
+        
+        cmd = L"gcc \"" + srcFile + L"\" -o \"" + outFile + L"\"";
+
+    } else if (command.map.size() == 2
         && command.map.find(L"-cpp") != command.map.end()
         && command.map.find(L"-exe") != command.map.end())
     {
@@ -1194,7 +1361,7 @@ void cmd_build(Command& command) {
         return;
     }
     
-    if (_wsystem(cmd.c_str()) == -1) {
+    if (_wsystem(cmd.c_str()) != 0) {
         std::wcout << L"Build file thất bại, hãy thử lại.\n";
     } else {
         std::wcout << L"Build file thành công.\n";
@@ -1211,34 +1378,41 @@ void cmd_run(Command& command) {
 
     // Kiểm tra -bg flag
     bool runInBackground = false;
-    if (command.map.find(L"-bg") != command.map.end()) {
-        const auto& bgParams = command.map[L"-bg"];
-        if (!bgParams.empty() && (bgParams[0] == L"yes")) {
-            runInBackground = true;
-        }
+    if (command.map.find(L"-bg") != command.map.end()
+        && command.map[L"-bg"][0] == L"yes")
+    {
+        runInBackground = true;
     }
 
     std::wstring exePath = params[0];
-    std::wstring cmd;
 
-    if (runInBackground) {
-        // Chạy nền: start không chờ, không hiện cửa sổ console mới
-        cmd = L"start \"\" /B \"" + exePath + L"\"";
-    } else {
-        // Chạy foreground: chạy và chờ kết thúc
-        cmd = L"\"" + exePath + L"\"";
-    }
-
+    // Xây dựng command line cho CreateProcess
+    std::wstring cmdLine = L"\"" + exePath + L"\"";
     for (size_t i = 1; i < params.size(); ++i) {
-        cmd += L" " + params[i];
+        cmdLine += L" " + params[i];
     }
 
-    int ret = _wsystem(cmd.c_str());
-    if (ret == -1) {
-        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
-    } else {
-        std::wcout << L"Chạy file thành công.\n";
-    }
+    // Chuẩn bị cho CreateProcess
+    STARTUPINFOW si = { 0 };
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+
+    // Tạo tiếng trình
+    BOOL success = CreateProcessW(
+        nullptr,
+        &cmdLine[0],
+        nullptr,
+        nullptr,
+        FALSE,
+        runInBackground ? CREATE_NEW_CONSOLE : 0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    // Xử lý kết quả tiến trình
+    handleProcessResult(success, pi, runInBackground);
 }
 
 void cmd_runbatch(Command& command) {
@@ -1250,33 +1424,38 @@ void cmd_runbatch(Command& command) {
 
     // Kiểm tra -bg flag
     bool runInBackground = false;
-    if (command.map.find(L"-bg") != command.map.end()) {
-        const auto& bgParams = command.map[L"-bg"];
-        if (!bgParams.empty() && (bgParams[0] == L"yes")) {
-            runInBackground = true;
-        }
+    if (command.map.find(L"-bg") != command.map.end() && command.map[L"-bg"][0] == L"yes") {
+        runInBackground = true;
     }
 
-    // Xây dựng lệnh
-    std::wstring cmd;
-    if (runInBackground) {
-        cmd = L"start \"\" /B cmd /c ";
-    } else {
-        cmd = L"cmd /c ";
-    }
-
-    // Thêm các tham số vào lệnh
+    // Xây dựng command line cho CreateProcess
     std::vector<std::wstring> params = command.map[L"-argS"];
-    for (auto& param: params) {
-        cmd += L"\"" + param + L"\" ";
+
+    std::wstring cmdLine = L"cmd /c \"" + params[0] + L"\"";
+    for (size_t i = 1; i < params.size(); ++i) {
+        cmdLine += L" " + params[i];
     }
 
-    // Thực thi lệnh
-    if (_wsystem(cmd.c_str()) == -1) {
-        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
-    } else {
-        std::wcout << L"Chạy file thành công.\n";
-    }
+    // Chuẩn bị cho CreateProcess
+    STARTUPINFOW si = { 0 };
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+
+    // Tạo tiến trình với CreateProcess
+    BOOL success = CreateProcessW(
+        nullptr,
+        &cmdLine[0],
+        nullptr,
+        nullptr,
+        FALSE,
+        runInBackground ? CREATE_NEW_CONSOLE : 0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    handleProcessResult(success, pi, runInBackground);
 }
 
 void cmd_runclass(Command& command) {
@@ -1288,43 +1467,47 @@ void cmd_runclass(Command& command) {
 
     // Kiểm tra -bg flag
     bool runInBackground = false;
-    if (command.map.find(L"-bg") != command.map.end()) {
-        const auto& bgParams = command.map[L"-bg"];
-        if (!bgParams.empty() && (bgParams[0] == L"yes")) {
-            runInBackground = true;
-        }
+    if (command.map.find(L"-bg") != command.map.end() && command.map[L"-bg"][0] == L"yes") {
+        runInBackground = true;
     }
 
-    // Xây dựng lệnh
+    // Xây dựng command line: java -cp "classpath" [options] [args...]
     std::wstring classpath = rootPath.substr(0, rootPath.find_last_of(L"\\/"));
-    std::wstring cmd;
-
-    if (runInBackground) {
-        cmd = L"start \"\" /B java -cp \"" + classpath + L"\"";
-    } else {
-        cmd = L"java -cp \"" + classpath + L"\"";
-    }
+    std::wstring cmdLine = L"java -cp \"" + classpath + L"\"";
 
     // Thêm các options vào lệnh
     if (command.map.find(L"-optionS") != command.map.end()) {
         std::vector<std::wstring> options = command.map.at(L"-optionS");
         for (auto& option: options) {
-            cmd += L" " + std::wstring(option.begin(), option.end());
+            cmdLine += L" " + std::wstring(option.begin(), option.end());
         }
     }
 
     // Thêm các tham số vào lệnh
     std::vector<std::wstring> params = command.map[L"-argS"];
     for (auto& param: params) {
-        cmd += L" " + std::wstring(param.begin(), param.end());
+        cmdLine += L" " + std::wstring(param.begin(), param.end());
     }
 
-    // Thực thi lệnh
-    if (_wsystem(cmd.c_str()) == -1) {
-        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
-    } else {
-        std::wcout << L"Chạy file thành công.\n";
-    }
+    STARTUPINFOW si = { 0 };
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+
+    BOOL success = CreateProcessW(
+        L"java",
+        &cmdLine[4],
+        nullptr,
+        nullptr,
+        FALSE,
+        runInBackground ? CREATE_NEW_CONSOLE : 0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    // Xử lý kết quả tiến trình
+    handleProcessResult(success, pi, runInBackground);
 }
 
 void cmd_runjar(Command& command) {
@@ -1336,43 +1519,50 @@ void cmd_runjar(Command& command) {
 
     // Kiểm tra -bg flag
     bool runInBackground = false;
-    if (command.map.find(L"-bg") != command.map.end()) {
-        const auto& bgParams = command.map[L"-bg"];
-        if (!bgParams.empty() && (bgParams[0] == L"yes")) {
-            runInBackground = true;
-        }
+    if (command.map.find(L"-bg") != command.map.end() && command.map[L"-bg"][0] == L"yes") {
+        runInBackground = true;
     }
 
-    // Xây dựng lệnh
-    std::wstring cmd;
-    if (runInBackground) {
-        cmd = L"start \"\" /B java";
-    } else {
-        cmd = L"java";
-    }
+    // Xây dựng command line: java [options] -jar [args...]
+    std::wstring cmdLine = L"java";
 
     // Thêm các options vào lệnh
     if (command.map.find(L"-optionS") != command.map.end()) {
         std::vector<std::wstring> options = command.map.at(L"-optionS");
         for (auto& option: options) {
-            cmd += L" " + std::wstring(option.begin(), option.end());
+            cmdLine += L" " + std::wstring(option.begin(), option.end());
         }
     }
 
-    cmd += L" -jar";
+    cmdLine += L" -jar";
 
     // Thêm các tham số vào lệnh
     std::vector<std::wstring> params = command.map[L"-argS"];
     for (auto& param: params) {
-        cmd += L" " + std::wstring(param.begin(), param.end());
+        cmdLine += L" " + std::wstring(param.begin(), param.end());
     }
 
-    // Thực thi lệnh
-    if (_wsystem(cmd.c_str()) == -1) {
-        std::wcout << L"Chạy file thất bại. Hãy thử lại.\n";
-    } else {
-        std::wcout << L"Chạy file thành công.\n";
-    }
+    // Chuẩn bị cho CreateProcess
+    STARTUPINFOW si = { 0 };
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = { 0 };
+
+    // Chạy bằng CreateProcess để quản lý tiến trình
+    BOOL success = CreateProcessW(
+        L"java",
+        &cmdLine[4],
+        nullptr,
+        nullptr,
+        FALSE,
+        runInBackground ? CREATE_NEW_CONSOLE : 0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    // Xử lý kết quả tiến trình
+    handleProcessResult(success, pi, runInBackground);
 }
 
 void cmd_sysinfo(Command& command) {
@@ -1563,10 +1753,18 @@ void executeCommand(Command& command) {
         cmd_rename(command);
     } else if (command.name == L"delete") {
         cmd_delete(command);
-    } else if (command.name == L"forward") {
-        cmd_forward(command);
-    } else if (command.name == L"backward") {
-        cmd_backward(command);
+    } else if (command.name == L"viewproc") {
+        cmd_viewproc(command);
+    } else if (command.name == L"killproc") {
+        cmd_killproc(command);
+    } else if (command.name == L"suspendproc") {
+        cmd_suspendproc(command);
+    } else if (command.name == L"resumeproc") {
+        cmd_resumeproc(command);
+    } else if (command.name == L"down") {
+        cmd_down(command);
+    } else if (command.name == L"up") {
+        cmd_up(command);
     } else if (command.name == L"return") {
         cmd_return(command);
     } else if (command.name == L"build") {
@@ -1603,8 +1801,12 @@ void executeCommand(Command& command) {
 
 // ------------Các hàm chính của chương trình------------------------
 // Hàm khởi tạo toàn bộ hệ thống
-void initialize() {
+void initialize() {    
+    // Thiết lập cấu hình console
+    SetConsoleCtrlHandler(ConsoleHandler, TRUE);
     _setmode(_fileno(stdout), _O_U16TEXT);
+
+    // Khởi tạo các thành phần cần thiết
     initializeRootDirectory();
     initializeCommandDictionary();
 }
@@ -1614,7 +1816,7 @@ void initialize() {
 void mainloop() {
     int continuous_fail_count = 0;
     bool exit = false;
-    while (!exit) { 
+    while (!exit) {
         std::wstring commandline = getRawCommandLine();
         auto command = decomposeCommandLine(commandline);
 
@@ -1626,7 +1828,7 @@ void mainloop() {
                             << L"Hãy gõ lệnh help để tra cú pháp lệnh đúng.\n";
             }
             continue;
-        } 
+        }
 
         continuous_fail_count = 0;
         executeCommand(command);
